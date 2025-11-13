@@ -1,69 +1,76 @@
 use eframe::{egui, App, Frame};
 use egui::{Pos2, Shape, Stroke};
-use std::f32::consts::PI;
+
+#[derive(Default, Clone)]
+struct State {
+    pos: [f32; 2],
+    vel: [f32; 2],
+    time: f32,
+}
 
 #[derive(Default)]
 struct OmniApp {
-    pos: [f32; 2],
-    vel: [f32; 2],
-    ux: f32,
-    uy: f32,
+    traj: Vec<State>, // 時系列データ
     time: f32,
     time_max: f32,
-    running: bool,
-    show_trail: bool,
-    trail: Vec<[f32; 2]>,
     scale: f32,
+    show_trail: bool,
+    playing: bool,
 }
 
 impl OmniApp {
     fn new() -> Self {
         Self {
-            pos: [0.0, 0.0],
-            vel: [0.0, 0.0],
-            ux: 0.0,
-            uy: 0.0,
+            traj: Vec::new(),
             time: 0.0,
             time_max: 10.0,
-            running: false,
-            show_trail: true,
-            trail: Vec::new(),
             scale: 200.0,
+            show_trail: true,
+            playing: false,
         }
     }
 
-    fn world_to_screen(&self, center: Pos2, p: [f32; 2]) -> Pos2 {
-        Pos2::new(center.x + p[0] * self.scale, center.y - p[1] * self.scale)
-    }
-
     fn compute_accel(&self, t: f32) -> (f32, f32) {
-        // 時間依存加速度 (例)
+        // 時間依存加速度関数
         let ux = (t).sin() * 2.0;
         let uy = (t * 0.5).cos() * 2.0;
         (ux, uy)
     }
 
-    fn simulate(&mut self, dt: f32) {
-        let steps = 5;
-        let sub_dt = dt / steps as f32;
-        for _ in 0..steps {
-            let (ux, uy) = self.compute_accel(self.time);
-            self.ux = ux;
-            self.uy = uy;
+    /// t=0からtime_maxまで事前に軌道を計算
+    fn precompute(&mut self) {
+        self.traj.clear();
+        let mut s = State::default();
+        let dt = 1.0 / 120.0;
 
-            self.vel[0] += ux * sub_dt;
-            self.vel[1] += uy * sub_dt;
-            self.pos[0] += self.vel[0] * sub_dt;
-            self.pos[1] += self.vel[1] * sub_dt;
-            self.time += sub_dt;
-
-            if self.show_trail {
-                self.trail.push(self.pos);
-                if self.trail.len() > 2000 {
-                    self.trail.remove(0);
-                }
-            }
+        for _ in 0..(self.time_max / dt) as usize {
+            let (ux, uy) = self.compute_accel(s.time);
+            s.vel[0] += ux * dt;
+            s.vel[1] += uy * dt;
+            s.pos[0] += s.vel[0] * dt;
+            s.pos[1] += s.vel[1] * dt;
+            s.time += dt;
+            self.traj.push(s.clone());
         }
+    }
+
+    /// スライダー位置に応じた状態を補間取得
+    fn get_state_at(&self, t: f32) -> State {
+        if self.traj.is_empty() {
+            return State::default();
+        }
+        if t <= 0.0 {
+            return self.traj[0].clone();
+        }
+        if t >= self.time_max {
+            return self.traj.last().unwrap().clone();
+        }
+        let idx = ((t / self.time_max) * (self.traj.len() - 1) as f32) as usize;
+        self.traj[idx].clone()
+    }
+
+    fn world_to_screen(&self, center: Pos2, p: [f32; 2]) -> Pos2 {
+        Pos2::new(center.x + p[0] * self.scale, center.y - p[1] * self.scale)
     }
 }
 
@@ -71,75 +78,81 @@ impl App for OmniApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.heading("Omni-wheel time simulation");
-                if ui.button(if self.running { "Pause" } else { "Run" }).clicked() {
-                    self.running = !self.running;
+                ui.heading("Omni-wheel trajectory viewer");
+                if ui.button(if self.playing { "Pause" } else { "Play" }).clicked() {
+                    if !self.playing && self.traj.is_empty() {
+                        self.precompute();
+                    }
+                    self.playing = !self.playing;
                 }
-                if ui.button("Reset").clicked() {
-                    self.pos = [0.0, 0.0];
-                    self.vel = [0.0, 0.0];
-                    self.trail.clear();
-                    self.time = 0.0;
+                if ui.button("Recompute").clicked() {
+                    self.precompute();
                 }
                 ui.checkbox(&mut self.show_trail, "Show trail");
             });
 
             ui.add(egui::Slider::new(&mut self.time, 0.0..=self.time_max).text("time (s)"));
+
             let (ux, uy) = self.compute_accel(self.time);
-            ui.label(format!("t = {:.2} s, ux = {:.2} m/s², uy = {:.2} m/s²", self.time, ux, uy));
+            let state = self.get_state_at(self.time);
+            ui.label(format!(
+                "t = {:.2}s  pos = [{:.2}, {:.2}]  vel = [{:.2}, {:.2}]  acc = [{:.2}, {:.2}]",
+                state.time, state.pos[0], state.pos[1], state.vel[0], state.vel[1], ux, uy
+            ));
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            let available = ui.available_rect_before_wrap();
-            let center = available.center();
-            let (response, painter) = ui.allocate_painter(available.size(), egui::Sense::hover());
+            let rect = ui.available_rect_before_wrap();
+            let center = rect.center();
+            let painter = ui.painter();
 
-            if self.running {
-                self.simulate(1.0 / 60.0);
-                if self.time > self.time_max {
-                    self.running = false;
+            // 軌道線
+            if self.show_trail && !self.traj.is_empty() {
+                let points: Vec<Pos2> = self
+                    .traj
+                    .iter()
+                    .take_while(|s| s.time <= self.time)
+                    .map(|s| self.world_to_screen(center, s.pos))
+                    .collect();
+                if points.len() > 1 {
+                    painter.add(Shape::line(points, Stroke::new(1.5, egui::Color32::LIGHT_BLUE)));
                 }
             }
 
-            // 座標軸
-            let axis_len = 1.0 * self.scale;
+            // 現在位置
+            let s = self.get_state_at(self.time);
+            let pos_screen = self.world_to_screen(center, s.pos);
+            painter.circle_filled(pos_screen, 10.0, egui::Color32::from_rgb(200, 100, 60));
+
+            // 速度ベクトル
+            let vel_end = Pos2::new(pos_screen.x + s.vel[0] * self.scale * 0.5, pos_screen.y - s.vel[1] * self.scale * 0.5);
+            painter.line_segment([pos_screen, vel_end], Stroke::new(2.0, egui::Color32::GREEN));
+
+            // 加速度ベクトル
+            let (ux, uy) = self.compute_accel(self.time);
+            let acc_end = Pos2::new(pos_screen.x + ux * self.scale * 0.2, pos_screen.y - uy * self.scale * 0.2);
+            painter.line_segment([pos_screen, acc_end], Stroke::new(2.0, egui::Color32::RED));
+
+            // 軸
+            let axis_len = self.scale;
             painter.line_segment(
                 [Pos2::new(center.x - axis_len, center.y), Pos2::new(center.x + axis_len, center.y)],
-                Stroke::new(1.0, egui::Color32::LIGHT_GRAY),
+                Stroke::new(1.0, egui::Color32::GRAY),
             );
             painter.line_segment(
                 [Pos2::new(center.x, center.y - axis_len), Pos2::new(center.x, center.y + axis_len)],
-                Stroke::new(1.0, egui::Color32::LIGHT_GRAY),
-            );
-
-            // 軌跡
-            if self.trail.len() >= 2 {
-                let points: Vec<Pos2> = self.trail.iter().map(|&p| self.world_to_screen(center, p)).collect();
-                painter.add(Shape::line(points, Stroke::new(1.0, egui::Color32::LIGHT_BLUE)));
-            }
-
-            // 本体
-            let body_center = self.world_to_screen(center, self.pos);
-            painter.circle_filled(body_center, 10.0, egui::Color32::from_rgb(200, 120, 80));
-
-            // 速度・加速度ベクトル
-            let vel_end = Pos2::new(body_center.x + self.vel[0] * self.scale, body_center.y - self.vel[1] * self.scale);
-            painter.line_segment([body_center, vel_end], Stroke::new(2.0, egui::Color32::GREEN));
-
-            let acc_end = Pos2::new(body_center.x + self.ux * self.scale * 0.2, body_center.y - self.uy * self.scale * 0.2);
-            painter.line_segment([body_center, acc_end], Stroke::new(2.0, egui::Color32::RED));
-
-            painter.text(
-                available.left_top() + egui::vec2(10.0, 10.0),
-                egui::Align2::LEFT_TOP,
-                format!(
-                    "pos = [{:.2}, {:.2}] vel = [{:.2}, {:.2}]",
-                    self.pos[0], self.pos[1], self.vel[0], self.vel[1]
-                ),
-                egui::FontId::proportional(14.0),
-                egui::Color32::BLACK,
+                Stroke::new(1.0, egui::Color32::GRAY),
             );
         });
+
+        // 自動再生
+        if self.playing {
+            self.time += 1.0 / 60.0;
+            if self.time > self.time_max {
+                self.time = 0.0;
+                self.playing = false;
+            }
+        }
 
         ctx.request_repaint();
     }
@@ -148,7 +161,7 @@ impl App for OmniApp {
 fn main() {
     let options = eframe::NativeOptions::default();
     eframe::run_native(
-        "Omni-wheel time simulator",
+        "Omni-wheel trajectory viewer",
         options,
         Box::new(|_cc| Box::new(OmniApp::new())),
     );
