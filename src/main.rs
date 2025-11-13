@@ -1,5 +1,5 @@
 use eframe::{egui, App, Frame};
-use egui::{Pos2, Shape, Stroke};
+use egui::{Pos2, Shape, Stroke, Vec2};
 
 #[derive(Default, Clone)]
 struct State {
@@ -16,7 +16,7 @@ struct OmniApp {
     scale: f32,
     show_trail: bool,
     playing: bool,
-    // 新しいパラメータ
+    // パラメータ
     a1: f32,
     a2: f32,
     a3: f32,
@@ -40,7 +40,6 @@ impl OmniApp {
     }
 
     fn compute_accel(&self, t: f32) -> (f32, f32) {
-        // phai3, phai4 の式に基づく加速度
         let phai3 = self.a1 * t + self.a3;
         let phai4 = self.a2 * t + self.a4;
         let h1 = (phai3 * phai3 + phai4 * phai4).sqrt().max(1e-6);
@@ -85,36 +84,53 @@ impl OmniApp {
 
 impl App for OmniApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
+        // 🌞 明るいテーマ設定
+        ctx.set_visuals(egui::Visuals::light());
+
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
-            ui.heading("Omni-wheel 2D trajectory (parametric accel)");
+            ui.add_space(8.0);
+            ui.vertical_centered(|ui| {
+                ui.heading("🌀 Omni-wheel 2D Trajectory Simulator");
+            });
+            ui.add_space(8.0);
             ui.separator();
 
-            ui.horizontal(|ui| {
-                ui.label("a1"); ui.add(egui::Slider::new(&mut self.a1, -2.0..=2.0));
-                ui.label("a2"); ui.add(egui::Slider::new(&mut self.a2, -2.0..=2.0));
-                ui.label("a3"); ui.add(egui::Slider::new(&mut self.a3, -2.0..=2.0));
-                ui.label("a4"); ui.add(egui::Slider::new(&mut self.a4, -2.0..=2.0));
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().slider_width = 200.0;
+                ui.label("a1"); ui.add(egui::Slider::new(&mut self.a1, -2.0..=2.0).text("a1"));
+                ui.label("a2"); ui.add(egui::Slider::new(&mut self.a2, -2.0..=2.0).text("a2"));
+                ui.label("a3"); ui.add(egui::Slider::new(&mut self.a3, -2.0..=2.0).text("a3"));
+                ui.label("a4"); ui.add(egui::Slider::new(&mut self.a4, -2.0..=2.0).text("a4"));
             });
 
+            ui.add_space(6.0);
             ui.horizontal(|ui| {
-                if ui.button(if self.playing { "Pause" } else { "Play" }).clicked() {
+                if ui.add(egui::Button::new(if self.playing { "⏸ Pause" } else { "▶ Play" }).min_size(Vec2::new(80.0, 32.0))).clicked() {
                     if !self.playing && self.traj.is_empty() {
                         self.precompute();
                     }
                     self.playing = !self.playing;
                 }
-                if ui.button("Recompute").clicked() {
+                if ui.add(egui::Button::new("🔁 Recompute").min_size(Vec2::new(100.0, 32.0))).clicked() {
                     self.precompute();
                 }
                 ui.checkbox(&mut self.show_trail, "Show trail");
             });
 
-            ui.add(egui::Slider::new(&mut self.time, 0.0..=self.time_max).text("time (s)"));
+            ui.add_space(10.0);
+
+            // 時間スライダーを大きくする
+            ui.style_mut().spacing.slider_width = 500.0;
+            let slider = egui::Slider::new(&mut self.time, 0.0..=self.time_max)
+                .text("⏱ time (s)")
+                .trailing_fill(true);
+            ui.add_sized(Vec2::new(520.0, 28.0), slider);
 
             let (ux, uy) = self.compute_accel(self.time);
             let state = self.get_state_at(self.time);
+            ui.add_space(5.0);
             ui.label(format!(
-                "t = {:.2}s | pos = [{:.2}, {:.2}] | vel = [{:.2}, {:.2}] | acc = [{:.2}, {:.2}]",
+                "t = {:.2}s   pos = [{:.2}, {:.2}]   vel = [{:.2}, {:.2}]   acc = [{:.2}, {:.2}]",
                 state.time, state.pos[0], state.pos[1], state.vel[0], state.vel[1], ux, uy
             ));
         });
@@ -133,37 +149,36 @@ impl App for OmniApp {
                     .map(|s| self.world_to_screen(center, s.pos))
                     .collect();
                 if points.len() > 1 {
-                    painter.add(Shape::line(points, Stroke::new(1.5, egui::Color32::LIGHT_BLUE)));
+                    painter.add(Shape::line(points, Stroke::new(2.0, egui::Color32::LIGHT_BLUE)));
                 }
             }
 
             // 現在位置
             let s = self.get_state_at(self.time);
             let pos_screen = self.world_to_screen(center, s.pos);
-            painter.circle_filled(pos_screen, 10.0, egui::Color32::from_rgb(200, 100, 60));
+            painter.circle_filled(pos_screen, 10.0, egui::Color32::from_rgb(255, 140, 0));
 
             // 速度ベクトル
             let vel_end = Pos2::new(pos_screen.x + s.vel[0] * self.scale * 0.5, pos_screen.y - s.vel[1] * self.scale * 0.5);
-            painter.line_segment([pos_screen, vel_end], Stroke::new(2.0, egui::Color32::GREEN));
+            painter.line_segment([pos_screen, vel_end], Stroke::new(2.5, egui::Color32::GREEN));
 
             // 加速度ベクトル
             let (ux, uy) = self.compute_accel(self.time);
             let acc_end = Pos2::new(pos_screen.x + ux * self.scale * 0.3, pos_screen.y - uy * self.scale * 0.3);
-            painter.line_segment([pos_screen, acc_end], Stroke::new(2.0, egui::Color32::RED));
+            painter.line_segment([pos_screen, acc_end], Stroke::new(2.5, egui::Color32::RED));
 
             // 軸
             let axis_len = self.scale;
             painter.line_segment(
                 [Pos2::new(center.x - axis_len, center.y), Pos2::new(center.x + axis_len, center.y)],
-                Stroke::new(1.0, egui::Color32::GRAY),
+                Stroke::new(1.0, egui::Color32::from_gray(150)),
             );
             painter.line_segment(
                 [Pos2::new(center.x, center.y - axis_len), Pos2::new(center.x, center.y + axis_len)],
-                Stroke::new(1.0, egui::Color32::GRAY),
+                Stroke::new(1.0, egui::Color32::from_gray(150)),
             );
         });
 
-        // 再生モード
         if self.playing {
             self.time += 1.0 / 60.0;
             if self.time > self.time_max {
@@ -179,9 +194,8 @@ impl App for OmniApp {
 fn main() {
     let options = eframe::NativeOptions::default();
     eframe::run_native(
-        "Omni-wheel 2D trajectory",
+        "Omni-wheel 2D Trajectory Simulator (Bright UI)",
         options,
         Box::new(|_cc| Box::new(OmniApp::new())),
     );
 }
-
