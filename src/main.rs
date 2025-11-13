@@ -10,12 +10,17 @@ struct State {
 
 #[derive(Default)]
 struct OmniApp {
-    traj: Vec<State>, // 時系列データ
+    traj: Vec<State>,
     time: f32,
     time_max: f32,
     scale: f32,
     show_trail: bool,
     playing: bool,
+    // 新しいパラメータ
+    a1: f32,
+    a2: f32,
+    a3: f32,
+    a4: f32,
 }
 
 impl OmniApp {
@@ -27,22 +32,27 @@ impl OmniApp {
             scale: 200.0,
             show_trail: true,
             playing: false,
+            a1: 1.0,
+            a2: 0.8,
+            a3: 0.0,
+            a4: 0.5,
         }
     }
 
     fn compute_accel(&self, t: f32) -> (f32, f32) {
-        // 時間依存加速度関数
-        let ux = (t).sin() * 2.0;
-        let uy = (t * 0.5).cos() * 2.0;
+        // phai3, phai4 の式に基づく加速度
+        let phai3 = self.a1 * t + self.a3;
+        let phai4 = self.a2 * t + self.a4;
+        let h1 = (phai3 * phai3 + phai4 * phai4).sqrt().max(1e-6);
+        let ux = phai3 / h1;
+        let uy = phai4 / h1;
         (ux, uy)
     }
 
-    /// t=0からtime_maxまで事前に軌道を計算
     fn precompute(&mut self) {
         self.traj.clear();
         let mut s = State::default();
         let dt = 1.0 / 120.0;
-
         for _ in 0..(self.time_max / dt) as usize {
             let (ux, uy) = self.compute_accel(s.time);
             s.vel[0] += ux * dt;
@@ -54,7 +64,6 @@ impl OmniApp {
         }
     }
 
-    /// スライダー位置に応じた状態を補間取得
     fn get_state_at(&self, t: f32) -> State {
         if self.traj.is_empty() {
             return State::default();
@@ -77,8 +86,17 @@ impl OmniApp {
 impl App for OmniApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
+            ui.heading("Omni-wheel 2D trajectory (parametric accel)");
+            ui.separator();
+
             ui.horizontal(|ui| {
-                ui.heading("Omni-wheel trajectory viewer");
+                ui.label("a1"); ui.add(egui::Slider::new(&mut self.a1, -2.0..=2.0));
+                ui.label("a2"); ui.add(egui::Slider::new(&mut self.a2, -2.0..=2.0));
+                ui.label("a3"); ui.add(egui::Slider::new(&mut self.a3, -2.0..=2.0));
+                ui.label("a4"); ui.add(egui::Slider::new(&mut self.a4, -2.0..=2.0));
+            });
+
+            ui.horizontal(|ui| {
                 if ui.button(if self.playing { "Pause" } else { "Play" }).clicked() {
                     if !self.playing && self.traj.is_empty() {
                         self.precompute();
@@ -96,7 +114,7 @@ impl App for OmniApp {
             let (ux, uy) = self.compute_accel(self.time);
             let state = self.get_state_at(self.time);
             ui.label(format!(
-                "t = {:.2}s  pos = [{:.2}, {:.2}]  vel = [{:.2}, {:.2}]  acc = [{:.2}, {:.2}]",
+                "t = {:.2}s | pos = [{:.2}, {:.2}] | vel = [{:.2}, {:.2}] | acc = [{:.2}, {:.2}]",
                 state.time, state.pos[0], state.pos[1], state.vel[0], state.vel[1], ux, uy
             ));
         });
@@ -130,7 +148,7 @@ impl App for OmniApp {
 
             // 加速度ベクトル
             let (ux, uy) = self.compute_accel(self.time);
-            let acc_end = Pos2::new(pos_screen.x + ux * self.scale * 0.2, pos_screen.y - uy * self.scale * 0.2);
+            let acc_end = Pos2::new(pos_screen.x + ux * self.scale * 0.3, pos_screen.y - uy * self.scale * 0.3);
             painter.line_segment([pos_screen, acc_end], Stroke::new(2.0, egui::Color32::RED));
 
             // 軸
@@ -145,7 +163,7 @@ impl App for OmniApp {
             );
         });
 
-        // 自動再生
+        // 再生モード
         if self.playing {
             self.time += 1.0 / 60.0;
             if self.time > self.time_max {
@@ -161,7 +179,7 @@ impl App for OmniApp {
 fn main() {
     let options = eframe::NativeOptions::default();
     eframe::run_native(
-        "Omni-wheel trajectory viewer",
+        "Omni-wheel 2D trajectory",
         options,
         Box::new(|_cc| Box::new(OmniApp::new())),
     );
