@@ -21,6 +21,8 @@ struct OmniApp {
     a2: f32,
     a3: f32,
     a4: f32,
+    vx0: f32,
+    vy0: f32,
 }
 
 impl OmniApp {
@@ -29,13 +31,15 @@ impl OmniApp {
             traj: Vec::new(),
             time: 0.0,
             time_max: 10.0,
-            scale: 200.0,
+            scale: 100.0,
             show_trail: true,
             playing: false,
             a1: 1.0,
             a2: 0.8,
             a3: 0.0,
             a4: 0.5,
+            vx0: 0.0,
+            vy0: 0.0,
         }
     }
 
@@ -51,6 +55,8 @@ impl OmniApp {
     fn precompute(&mut self) {
         self.traj.clear();
         let mut s = State::default();
+        s.vel[0] = self.vx0;
+        s.vel[1] = self.vy0;
         let dt = 1.0 / 120.0;
         for _ in 0..(self.time_max / dt) as usize {
             let (ux, uy) = self.compute_accel(s.time);
@@ -101,6 +107,13 @@ impl App for OmniApp {
                 ui.label("a2"); ui.add(egui::Slider::new(&mut self.a2, -2.0..=2.0).text("a2"));
                 ui.label("a3"); ui.add(egui::Slider::new(&mut self.a3, -2.0..=2.0).text("a3"));
                 ui.label("a4"); ui.add(egui::Slider::new(&mut self.a4, -2.0..=2.0).text("a4"));
+            });
+            ui.separator();
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().slider_width = 200.0;
+                ui.label("Initial Velocity");
+                ui.add(egui::Slider::new(&mut self.vx0, -5.0..=5.0).text("vx0"));
+                ui.add(egui::Slider::new(&mut self.vy0, -5.0..=5.0).text("vy0"));
             });
 
             ui.add_space(6.0);
@@ -153,13 +166,15 @@ impl App for OmniApp {
                 }
             }
 
+            const VEL_ARROW_SCALE: f32 = 0.5;
+
             // 現在位置
             let s = self.get_state_at(self.time);
             let pos_screen = self.world_to_screen(center, s.pos);
             painter.circle_filled(pos_screen, 10.0, egui::Color32::from_rgb(255, 140, 0));
 
             // 速度ベクトル
-            let vel_end = Pos2::new(pos_screen.x + s.vel[0] * self.scale * 0.5, pos_screen.y - s.vel[1] * self.scale * 0.5);
+            let vel_end = Pos2::new(pos_screen.x + s.vel[0] * self.scale * VEL_ARROW_SCALE, pos_screen.y - s.vel[1] * self.scale * VEL_ARROW_SCALE);
             painter.line_segment([pos_screen, vel_end], Stroke::new(2.5, egui::Color32::GREEN));
 
             // 加速度ベクトル
@@ -168,7 +183,7 @@ impl App for OmniApp {
             painter.line_segment([pos_screen, acc_end], Stroke::new(2.5, egui::Color32::RED));
 
             // 軸
-            let axis_len = self.scale;
+            let axis_len = self.scale * 3.0;
             painter.line_segment(
                 [Pos2::new(center.x - axis_len, center.y), Pos2::new(center.x + axis_len, center.y)],
                 Stroke::new(1.0, egui::Color32::from_gray(150)),
@@ -177,6 +192,10 @@ impl App for OmniApp {
                 [Pos2::new(center.x, center.y - axis_len), Pos2::new(center.x, center.y + axis_len)],
                 Stroke::new(1.0, egui::Color32::from_gray(150)),
             );
+
+            // 初速度ベクトル
+            let initial_vel = self.world_to_screen(center, [self.vx0 * VEL_ARROW_SCALE, self.vy0 * VEL_ARROW_SCALE]);
+            painter.line_segment([Pos2::new(center.x, center.y), initial_vel], Stroke::new(2.5, egui::Color32::DARK_GREEN));
         });
 
         if self.playing {
