@@ -6,6 +6,8 @@ struct State {
     pos: [f32; 2],
     vel: [f32; 2],
     time: f32,
+    pos_compute_2: [f32; 2],
+    vel_compute_2: [f32; 2],
 }
 
 #[derive(Default)]
@@ -43,13 +45,13 @@ impl OmniApp {
         }
     }
 
-    fn compute_accel(&self, t: f32) -> (f32, f32) {
+    fn compute_accel(&self, t: f32) -> (f32, f32, f32) {
         let phai3 = self.a1 * t + self.a3;
         let phai4 = self.a2 * t + self.a4;
         let h1 = (phai3 * phai3 + phai4 * phai4).sqrt().max(1e-6);
         let ux = phai3 / h1;
         let uy = phai4 / h1;
-        (ux, uy)
+        (ux, uy, h1)
     }
 
     fn precompute(&mut self) {
@@ -59,12 +61,34 @@ impl OmniApp {
         s.vel[1] = self.vy0;
         let dt = 1.0 / 120.0;
         for _ in 0..(self.time_max / dt) as usize {
-            let (ux, uy) = self.compute_accel(s.time);
+            let (ux, uy, h1) = self.compute_accel(s.time);
             s.vel[0] += ux * dt;
             s.vel[1] += uy * dt;
             s.pos[0] += s.vel[0] * dt;
             s.pos[1] += s.vel[1] * dt;
             s.time += dt;
+
+            let p = self.a1 * self.a1 + self.a2 * self.a2;
+            let sqrt_p = p.sqrt();
+            let q_div2 = self.a1 * self.a3 + self.a2 * self.a4;
+
+            let h1_t0 = (self.a3 * self.a3 + self.a4 * self.a4).sqrt();
+
+            let log_clause = (sqrt_p * s.time + q_div2 / sqrt_p + h1).ln();
+            let log_t0 = (q_div2 / sqrt_p + h1_t0).ln();
+
+            s.vel_compute_2[0] = self.vx0 
+                + (self.a1 / p) * (h1 - h1_t0)
+                + (log_clause - log_t0) * (self.a3 * p - self.a1 * q_div2) / (sqrt_p * p);
+
+            s.vel_compute_2[1] = self.vy0 
+                + (self.a2 / p) * (h1 - h1_t0)
+                + (log_clause - log_t0) * (self.a4 * p - self.a2 * q_div2) / (sqrt_p * p);
+
+            // WIP also integral position
+            s.pos_compute_2[0] += s.vel_compute_2[0] * dt;
+            s.pos_compute_2[1] += s.vel_compute_2[1] * dt;
+
             self.traj.push(s.clone());
         }
     }
@@ -139,7 +163,7 @@ impl App for OmniApp {
                 .trailing_fill(true);
             ui.add_sized(Vec2::new(520.0, 28.0), slider);
 
-            let (ux, uy) = self.compute_accel(self.time);
+            let (ux, uy, _h1) = self.compute_accel(self.time);
             let state = self.get_state_at(self.time);
             ui.add_space(5.0);
             ui.label(format!(
@@ -164,6 +188,15 @@ impl App for OmniApp {
                 if points.len() > 1 {
                     painter.add(Shape::line(points, Stroke::new(2.0, egui::Color32::LIGHT_BLUE)));
                 }
+                let points_compute_2: Vec<Pos2> = self
+                    .traj
+                    .iter()
+                    .take_while(|s| s.time <= self.time)
+                    .map(|s| self.world_to_screen(center, s.pos_compute_2))
+                    .collect();
+                if points_compute_2.len() > 1 {
+                    painter.add(Shape::line(points_compute_2, Stroke::new(2.0, egui::Color32::LIGHT_RED)));
+                }
             }
 
             const VEL_ARROW_SCALE: f32 = 0.5;
@@ -178,7 +211,7 @@ impl App for OmniApp {
             painter.line_segment([pos_screen, vel_end], Stroke::new(2.5, egui::Color32::GREEN));
 
             // 加速度ベクトル
-            let (ux, uy) = self.compute_accel(self.time);
+            let (ux, uy, _h1) = self.compute_accel(self.time);
             let acc_end = Pos2::new(pos_screen.x + ux * self.scale * 0.3, pos_screen.y - uy * self.scale * 0.3);
             painter.line_segment([pos_screen, acc_end], Stroke::new(2.5, egui::Color32::RED));
 
