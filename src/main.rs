@@ -36,12 +36,12 @@ impl OmniApp {
             scale: 100.0,
             show_trail: true,
             playing: false,
-            a1: 1.0,
-            a2: 0.8,
-            a3: 0.0,
-            a4: 0.5,
-            vx0: 0.0,
-            vy0: 0.0,
+            a1: 1.1,
+            a2: -0.7,
+            a3: 1.0,
+            a4: -0.5,
+            vx0: -1.2,
+            vy0: 1.3,
         }
     }
 
@@ -55,6 +55,12 @@ impl OmniApp {
     }
 
     fn precompute(&mut self) {
+        let p = self.a1 * self.a1 + self.a2 * self.a2;
+        let sqrt_p = p.sqrt();
+        let q_div2 = self.a1 * self.a3 + self.a2 * self.a4;
+        let h1_t0 = (self.a3 * self.a3 + self.a4 * self.a4).sqrt();
+        let log_t0 = (q_div2 / sqrt_p + h1_t0).ln();
+
         self.traj.clear();
         let mut s = State::default();
         s.vel[0] = self.vx0;
@@ -68,14 +74,7 @@ impl OmniApp {
             s.pos[1] += s.vel[1] * dt;
             s.time += dt;
 
-            let p = self.a1 * self.a1 + self.a2 * self.a2;
-            let sqrt_p = p.sqrt();
-            let q_div2 = self.a1 * self.a3 + self.a2 * self.a4;
-
-            let h1_t0 = (self.a3 * self.a3 + self.a4 * self.a4).sqrt();
-
             let log_clause = (sqrt_p * s.time + q_div2 / sqrt_p + h1).ln();
-            let log_t0 = (q_div2 / sqrt_p + h1_t0).ln();
 
             s.vel_compute_2[0] = self.vx0 
                 + (self.a1 / p) * (h1 - h1_t0)
