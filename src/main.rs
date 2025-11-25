@@ -25,6 +25,7 @@ struct OmniApp {
     a4: f32,
     vx0: f32,
     vy0: f32,
+    need_recalc: bool,
 }
 
 impl OmniApp {
@@ -42,6 +43,7 @@ impl OmniApp {
             a4: -0.5,
             vx0: -1.2,
             vy0: 1.3,
+            need_recalc: false,
         }
     }
 
@@ -126,17 +128,17 @@ impl App for OmniApp {
 
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().slider_width = 200.0;
-                ui.label("a1"); ui.add(egui::Slider::new(&mut self.a1, -2.0..=2.0).text("a1"));
-                ui.label("a2"); ui.add(egui::Slider::new(&mut self.a2, -2.0..=2.0).text("a2"));
-                ui.label("a3"); ui.add(egui::Slider::new(&mut self.a3, -2.0..=2.0).text("a3"));
-                ui.label("a4"); ui.add(egui::Slider::new(&mut self.a4, -2.0..=2.0).text("a4"));
+                ui.label("a1"); self.need_recalc |= ui.add(egui::Slider::new(&mut self.a1, -2.0..=2.0).text("a1")).changed();
+                ui.label("a2"); self.need_recalc |= ui.add(egui::Slider::new(&mut self.a2, -2.0..=2.0).text("a2")).changed();
+                ui.label("a3"); self.need_recalc |= ui.add(egui::Slider::new(&mut self.a3, -2.0..=2.0).text("a3")).changed();
+                ui.label("a4"); self.need_recalc |= ui.add(egui::Slider::new(&mut self.a4, -2.0..=2.0).text("a4")).changed();
             });
             ui.separator();
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().slider_width = 200.0;
                 ui.label("Initial Velocity");
-                ui.add(egui::Slider::new(&mut self.vx0, -5.0..=5.0).text("vx0"));
-                ui.add(egui::Slider::new(&mut self.vy0, -5.0..=5.0).text("vy0"));
+                self.need_recalc |= ui.add(egui::Slider::new(&mut self.vx0, -5.0..=5.0).text("vx0")).changed();
+                self.need_recalc |= ui.add(egui::Slider::new(&mut self.vy0, -5.0..=5.0).text("vy0")).changed();
             });
 
             ui.add_space(6.0);
@@ -147,8 +149,9 @@ impl App for OmniApp {
                     }
                     self.playing = !self.playing;
                 }
-                if ui.add(egui::Button::new("🔁 Recompute").min_size(Vec2::new(100.0, 32.0))).clicked() {
+                if ui.add(egui::Button::new("🔁 Recompute").min_size(Vec2::new(100.0, 32.0))).clicked() || self.need_recalc {
                     self.precompute();
+                    self.need_recalc = false;
                 }
                 ui.checkbox(&mut self.show_trail, "Show trail");
             });
