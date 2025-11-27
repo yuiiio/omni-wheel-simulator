@@ -173,8 +173,8 @@ impl App for OmniApp {
             let state = self.get_state_at(self.time);
             ui.add_space(5.0);
             ui.label(format!(
-                "t = {:.2}s   pos = [{:.2}, {:.2}]   vel = [{:.2}, {:.2}]   acc = [{:.2}, {:.2}]",
-                state.time, state.pos[0], state.pos[1], state.vel[0], state.vel[1], ux, uy
+                "t = {:.2}s   pos_compute_2 = [{:.2}, {:.2}]   vel = [{:.2}, {:.2}]   acc = [{:.2}, {:.2}]",
+                state.time, state.pos_compute_2[0], state.pos_compute_2[1], state.vel_compute_2[0], state.vel_compute_2[1], ux, uy
             ));
         });
 
@@ -182,6 +182,32 @@ impl App for OmniApp {
             let rect = ui.available_rect_before_wrap();
             let center = rect.center();
             let painter = ui.painter();
+
+            const VEL_ARROW_SCALE: f32 = 0.5;
+
+            // --- 0.5 秒ごとの状態描画（軌道線の上に追加） ---
+            let mut t_mark = 0.0;
+            while t_mark <= self.time && t_mark <= self.time_max {
+                if let Some(state) = self
+                    .traj
+                        .iter()
+                        .min_by(|a, b| (a.time - t_mark).abs().partial_cmp(&(b.time - t_mark).abs()).unwrap())
+                {
+                    let pos_screen = self.world_to_screen(center, state.pos_compute_2);
+                    painter.circle_filled(pos_screen, 10.0, egui::Color32::from_rgb(255, 140, 0));
+
+                    // 速度ベクトル
+                    let vel_end = Pos2::new(pos_screen.x + state.vel_compute_2[0] * self.scale * VEL_ARROW_SCALE, pos_screen.y - state.vel_compute_2[1] * self.scale * VEL_ARROW_SCALE);
+                    painter.line_segment([pos_screen, vel_end], Stroke::new(2.5, egui::Color32::DARK_GREEN));
+
+                    // 加速度ベクトル
+                    let [ux, uy] = state.accel;
+                    let acc_end = Pos2::new(pos_screen.x + ux * self.scale * 0.3, pos_screen.y - uy * self.scale * 0.3);
+                    painter.line_segment([pos_screen, acc_end], Stroke::new(2.5, egui::Color32::RED));
+
+                }
+                t_mark += 0.5;
+            }
 
             // 軌道線
             if self.show_trail && !self.traj.is_empty() {
@@ -194,6 +220,7 @@ impl App for OmniApp {
                 if points.len() > 1 {
                     painter.add(Shape::line(points, Stroke::new(2.0, egui::Color32::LIGHT_BLUE)));
                 }
+
                 let points_compute_2: Vec<Pos2> = self
                     .traj
                     .iter()
@@ -205,31 +232,6 @@ impl App for OmniApp {
                 }
             }
 
-            const VEL_ARROW_SCALE: f32 = 0.5;
-
-            // --- 0.5 秒ごとの状態描画（軌道線の上に追加） ---
-            let mut t_mark = 0.0;
-            while t_mark <= self.time && t_mark <= self.time_max {
-                if let Some(state) = self
-                    .traj
-                        .iter()
-                        .min_by(|a, b| (a.time - t_mark).abs().partial_cmp(&(b.time - t_mark).abs()).unwrap())
-                {
-                    let pos_screen = self.world_to_screen(center, state.pos);
-                    painter.circle_filled(pos_screen, 10.0, egui::Color32::from_rgb(255, 140, 0));
-
-                    // 速度ベクトル
-                    let vel_end = Pos2::new(pos_screen.x + state.vel[0] * self.scale * VEL_ARROW_SCALE, pos_screen.y - state.vel[1] * self.scale * VEL_ARROW_SCALE);
-                    painter.line_segment([pos_screen, vel_end], Stroke::new(2.5, egui::Color32::GREEN));
-
-                    // 加速度ベクトル
-                    let [ux, uy] = state.accel;
-                    let acc_end = Pos2::new(pos_screen.x + ux * self.scale * 0.3, pos_screen.y - uy * self.scale * 0.3);
-                    painter.line_segment([pos_screen, acc_end], Stroke::new(2.5, egui::Color32::RED));
-
-                }
-                t_mark += 0.5;
-            }
             // 軸
             let axis_len = self.scale * 3.0;
             painter.line_segment(
@@ -243,7 +245,7 @@ impl App for OmniApp {
 
             // 初速度ベクトル
             let initial_vel = self.world_to_screen(center, [self.vx0 * VEL_ARROW_SCALE, self.vy0 * VEL_ARROW_SCALE]);
-            painter.line_segment([Pos2::new(center.x, center.y), initial_vel], Stroke::new(2.5, egui::Color32::DARK_GREEN));
+            painter.line_segment([Pos2::new(center.x, center.y), initial_vel], Stroke::new(2.5, egui::Color32::DARK_BLUE));
         });
 
         if self.playing {
