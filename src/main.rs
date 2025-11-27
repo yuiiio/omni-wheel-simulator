@@ -3,6 +3,7 @@ use egui::{Pos2, Shape, Stroke, Vec2};
 
 #[derive(Default, Clone)]
 struct State {
+    accel: [f32; 2],
     pos: [f32; 2],
     vel: [f32; 2],
     time: f32,
@@ -70,6 +71,9 @@ impl OmniApp {
         let dt = 1.0 / 120.0;
         for _ in 0..(self.time_max / dt) as usize {
             let (ux, uy, h1) = self.compute_accel(s.time);
+            s.accel[0] = ux;
+            s.accel[1] = uy;
+
             s.vel[0] += ux * dt;
             s.vel[1] += uy * dt;
             s.pos[0] += s.vel[0] * dt;
@@ -203,20 +207,29 @@ impl App for OmniApp {
 
             const VEL_ARROW_SCALE: f32 = 0.5;
 
-            // 現在位置
-            let s = self.get_state_at(self.time);
-            let pos_screen = self.world_to_screen(center, s.pos);
-            painter.circle_filled(pos_screen, 10.0, egui::Color32::from_rgb(255, 140, 0));
+            // --- 0.5 秒ごとの状態描画（軌道線の上に追加） ---
+            let mut t_mark = 0.0;
+            while t_mark <= self.time && t_mark <= self.time_max {
+                if let Some(state) = self
+                    .traj
+                        .iter()
+                        .min_by(|a, b| (a.time - t_mark).abs().partial_cmp(&(b.time - t_mark).abs()).unwrap())
+                {
+                    let pos_screen = self.world_to_screen(center, state.pos);
+                    painter.circle_filled(pos_screen, 10.0, egui::Color32::from_rgb(255, 140, 0));
 
-            // 速度ベクトル
-            let vel_end = Pos2::new(pos_screen.x + s.vel[0] * self.scale * VEL_ARROW_SCALE, pos_screen.y - s.vel[1] * self.scale * VEL_ARROW_SCALE);
-            painter.line_segment([pos_screen, vel_end], Stroke::new(2.5, egui::Color32::GREEN));
+                    // 速度ベクトル
+                    let vel_end = Pos2::new(pos_screen.x + state.vel[0] * self.scale * VEL_ARROW_SCALE, pos_screen.y - state.vel[1] * self.scale * VEL_ARROW_SCALE);
+                    painter.line_segment([pos_screen, vel_end], Stroke::new(2.5, egui::Color32::GREEN));
 
-            // 加速度ベクトル
-            let (ux, uy, _h1) = self.compute_accel(self.time);
-            let acc_end = Pos2::new(pos_screen.x + ux * self.scale * 0.3, pos_screen.y - uy * self.scale * 0.3);
-            painter.line_segment([pos_screen, acc_end], Stroke::new(2.5, egui::Color32::RED));
+                    // 加速度ベクトル
+                    let [ux, uy] = state.accel;
+                    let acc_end = Pos2::new(pos_screen.x + ux * self.scale * 0.3, pos_screen.y - uy * self.scale * 0.3);
+                    painter.line_segment([pos_screen, acc_end], Stroke::new(2.5, egui::Color32::RED));
 
+                }
+                t_mark += 0.5;
+            }
             // 軸
             let axis_len = self.scale * 3.0;
             painter.line_segment(
