@@ -265,6 +265,6 @@ fn main() {
     eframe::run_native(
         "Omni-wheel 2D Trajectory Simulator (Bright UI)",
         options,
-        Box::new(|_cc| Box::new(OmniApp::new())),
+        Box::new(|_cc| Ok(Box::new(OmniApp::new()))),
     );
 }
