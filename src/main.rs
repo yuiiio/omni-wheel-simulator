@@ -48,7 +48,7 @@ impl OmniApp {
         }
     }
 
-    fn compute_accel(&self, t: f32) -> (f32, f32, f32) {
+    fn compute_accel(&self, t: f32) -> (f32, f32) {
         let phai3 = self.a1 * t + self.a3;
         let phai4 = self.a2 * t + self.a4;
 
@@ -56,7 +56,7 @@ impl OmniApp {
         
         let ux = phai3 / h1;
         let uy = phai4 / h1;
-        (ux, uy, h1)
+        (ux, uy)
     }
 
     fn precompute(&mut self) {
@@ -70,15 +70,15 @@ impl OmniApp {
         // 数値積分と、積分関数の結果があっていることを確かめます。
 
         let alpha = self.a1.powi(2) + self.a2.powi(2);
-        let beta = 2.0 * self.a1 * self.a3 + self.a2 * self.a4;
+        let beta = 2.0 * (self.a1 * self.a3 + self.a2 * self.a4);
         let gamma = self.a3.powi(2) + self.a4.powi(2);
 
-        let square_p = (4.0 * alpha * gamma - beta.powi(2)) / 4.0 * alpha.powi(2);
+        let square_p = (4.0 * alpha * gamma - beta.powi(2)) / (4.0 * alpha.powi(2));
         let u_t0 = beta / (2.0 * alpha);
         let norm_t0 = (u_t0.powi(2) + square_p).sqrt();
         let log_t0 = (u_t0 + norm_t0).ln();
-        let log_coef_x = self.a3 - (beta * self.a1 / 2.0 * alpha);
-        let log_coef_y = self.a4 - (beta * self.a2 / 2.0 * alpha);
+        let log_coef_x = self.a3 - ((beta * self.a1) / (2.0 * alpha));
+        let log_coef_y = self.a4 - ((beta * self.a2) / (2.0 * alpha));
 
         self.traj.clear();
         let mut s = State::default();
@@ -86,7 +86,7 @@ impl OmniApp {
         s.vel[1] = self.vy0;
         let dt = 1.0 / 120.0;
         for _ in 0..(self.time_max / dt) as usize {
-            let (ux, uy, h1) = self.compute_accel(s.time);
+            let (ux, uy) = self.compute_accel(s.time);
             s.accel[0] = ux;
             s.accel[1] = uy;
 
@@ -188,7 +188,7 @@ impl App for OmniApp {
                 .trailing_fill(true);
             ui.add_sized(Vec2::new(520.0, 28.0), slider);
 
-            let (ux, uy, _h1) = self.compute_accel(self.time);
+            let (ux, uy) = self.compute_accel(self.time);
             let state = self.get_state_at(self.time);
             ui.add_space(5.0);
             ui.label(format!(
@@ -285,5 +285,5 @@ fn main() {
         "Omni-wheel 2D Trajectory Simulator (Bright UI)",
         options,
         Box::new(|_cc| Ok(Box::new(OmniApp::new()))),
-    );
+    ).ok();
 }
