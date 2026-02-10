@@ -6,7 +6,7 @@ struct State {
     accel: [f32; 2],
     pos: [f32; 2],
     vel: [f32; 2],
-    time: f32,
+    state_time: f32,
     pos_func_2: [f32; 2],
     vel_func_2: [f32; 2],
 }
@@ -77,8 +77,8 @@ impl OmniApp {
         let u_t0 = beta / (2.0 * alpha);
         let norm_t0 = (u_t0.powi(2) + square_p).sqrt();
         let log_t0 = (u_t0 + norm_t0).ln();
-        let log_coef_x = self.a3 - ((beta * self.a1) / (2.0 * alpha));
-        let log_coef_y = self.a4 - ((beta * self.a2) / (2.0 * alpha));
+        let log_coef_x = self.a3 - (beta * self.a1) / (2.0 * alpha);
+        let log_coef_y = self.a4 - (beta * self.a2) / (2.0 * alpha);
 
         self.traj.clear();
         let mut s = State::default();
@@ -86,7 +86,7 @@ impl OmniApp {
         s.vel[1] = self.vy0;
         let dt = 1.0 / 120.0;
         for _ in 0..(self.time_max / dt) as usize {
-            let (ux, uy) = self.compute_accel(s.time);
+            let (ux, uy) = self.compute_accel(s.state_time);
             s.accel[0] = ux;
             s.accel[1] = uy;
 
@@ -97,7 +97,7 @@ impl OmniApp {
             s.pos[1] += s.vel[1] * dt;
 
             //積分関数
-            let u_now = u_t0 + self.time;
+            let u_now = u_t0 + s.state_time;
             let norm_now = (u_now.powi(2) + square_p).sqrt();
             let log_now = (u_now + norm_now).ln();
 
@@ -112,7 +112,7 @@ impl OmniApp {
 
             // pos integral function
 
-            s.time += dt;
+            s.state_time += dt;
             self.traj.push(s.clone());
         }
     }
@@ -193,7 +193,7 @@ impl App for OmniApp {
             ui.add_space(5.0);
             ui.label(format!(
                 "t = {:.2}s   pos_func_2 = [{:.2}, {:.2}]   vel = [{:.2}, {:.2}]   acc = [{:.2}, {:.2}]",
-                state.time, state.pos_func_2[0], state.pos_func_2[1], state.vel_func_2[0], state.vel_func_2[1], ux, uy
+                state.state_time, state.pos_func_2[0], state.pos_func_2[1], state.vel_func_2[0], state.vel_func_2[1], ux, uy
             ));
         });
 
@@ -210,7 +210,7 @@ impl App for OmniApp {
                 if let Some(state) = self
                     .traj
                         .iter()
-                        .min_by(|a, b| (a.time - t_mark).abs().partial_cmp(&(b.time - t_mark).abs()).unwrap())
+                        .min_by(|a, b| (a.state_time - t_mark).abs().partial_cmp(&(b.state_time - t_mark).abs()).unwrap())
                 {
                     let pos_screen = self.world_to_screen(center, state.pos_func_2);
                     painter.circle_filled(pos_screen, 10.0, egui::Color32::from_rgb(255, 140, 0));
@@ -233,7 +233,7 @@ impl App for OmniApp {
                 let points: Vec<Pos2> = self
                     .traj
                     .iter()
-                    .take_while(|s| s.time <= self.time)
+                    .take_while(|s| s.state_time <= self.time)
                     .map(|s| self.world_to_screen(center, s.pos))
                     .collect();
                 if points.len() > 1 {
@@ -243,7 +243,7 @@ impl App for OmniApp {
                 let points_func_2: Vec<Pos2> = self
                     .traj
                     .iter()
-                    .take_while(|s| s.time <= self.time)
+                    .take_while(|s| s.state_time <= self.time)
                     .map(|s| self.world_to_screen(center, s.pos_func_2))
                     .collect();
                 if points_func_2.len() > 1 {
