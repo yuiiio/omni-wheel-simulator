@@ -12,6 +12,7 @@ struct State {
     pos_func_2: [f32; 2],
     vel_func_2: [f32; 2],
     */
+    jacobian: Matrix4<f32>,
 }
 
 #[derive(Default)]
@@ -51,7 +52,7 @@ impl OmniApp {
         }
     }
 
-    fn compute_accel(&self, t: f32) -> (f32, f32) {
+    fn compute_accel(&self, t: f32) -> (f32, f32, f32, f32, f32) {
         let phai3 = self.a1 * t + self.a3;
         let phai4 = self.a2 * t + self.a4;
 
@@ -59,7 +60,7 @@ impl OmniApp {
         
         let ux = phai3 / h1;
         let uy = phai4 / h1;
-        (ux, uy)
+        (ux, uy, phai3, phai4, h1)
     }
 
     fn precompute(&mut self) {
@@ -93,7 +94,8 @@ impl OmniApp {
         s.vel[1] = self.vy0;
         let dt = 1.0 / 120.0;
         for _ in 0..(self.time_max / dt) as usize {
-            let (ux, uy) = self.compute_accel(s.state_time);
+            let (ux, uy, phai3, phai4, r) 
+                = self.compute_accel(s.state_time);
             s.accel[0] = ux;
             s.accel[1] = uy;
 
@@ -134,6 +136,26 @@ impl OmniApp {
             // ∂uy/∂a2 = t/R - (phai4^2 * t)/R^3
             // ∂uy/∂a3 = 0
             // ∂uy/∂a4 = 1/R - (phai4^2 * 1)/R^3
+
+            let transition_matrix = Matrix4::new(
+                0.0, 0.0, 1.0, 0.0,             
+                0.0, 0.0, 0.0, 1.0,
+                0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0,);
+
+            let xa1 = (s.state_time / r) - (phai3.powi(2) * s.state_time / r.powi(3));
+            let xa3 = (1.0 / r) - (phai3.powi(2) * 1.0 / r.powi(3));
+            let ya2 = (s.state_time / r) - (phai4.powi(2) * s.state_time / r.powi(3));
+            let ya4 = (1.0 / r) - (phai4.powi(2) * 1.0 / r.powi(3));
+            
+            let input_matrix = Matrix4::new(
+                0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0,
+                xa1, 0.0, xa3, 0.0,
+                0.0, ya2, 0.0, ya4);
+
+            //とりあえずオイラー法
+            s.jacobian += (transition_matrix * s.jacobian + input_matrix )*dt;
 
             //積分関数 
             //実験結果=> 特に位置の2階積分が、不安定
@@ -238,7 +260,7 @@ impl App for OmniApp {
                 .trailing_fill(true);
             ui.add_sized(Vec2::new(520.0, 28.0), slider);
 
-            let (ux, uy) = self.compute_accel(self.time);
+            let (ux, uy, _, _, _) = self.compute_accel(self.time);
             let state = self.get_state_at(self.time);
             ui.add_space(5.0);
             ui.label(format!(
@@ -302,6 +324,20 @@ impl App for OmniApp {
                     painter.add(Shape::line(points_func_2, Stroke::new(2.0, egui::Color32::LIGHT_RED)));
                 }
                 */
+            }
+
+            if let Some(current_state) = self
+                .traj
+                    .iter()
+                    .min_by(|a, b| {
+                        (a.state_time - self.time)
+                            .abs()
+                            .partial_cmp(&(b.state_time - self.time).abs())
+                            .unwrap()
+                    })
+            {
+                println!("Current time: {:.3}", current_state.state_time);
+                println!("Jacobian:\n{}", current_state.jacobian);
             }
 
             // 軸
