@@ -107,10 +107,18 @@ impl OmniApp {
             s.vel_func_2[1] = self.vy0 +
                 ( self.a2 * (norm_now - norm_t0) + log_coef_y * (log_now - log_t0) ) / alpha.sqrt();
 
-            s.pos_func_2[0] += s.vel_func_2[0] * dt;
-            s.pos_func_2[1] += s.vel_func_2[1] * dt;
+            //s.pos_func_2[0] += s.vel_func_2[0] * dt;
+            //s.pos_func_2[1] += s.vel_func_2[1] * dt;
 
-            // pos integral function
+            s.pos_func_2[0] = 0.0 + self.vx0 * s.state_time +
+                ( (self.a1 / 2.0) * ((u_now * norm_now - u_t0 * norm_t0) + (square_p * (log_now - log_t0))) +
+                    log_coef_x * ((u_now * log_now - u_t0 * log_t0) - (norm_now - norm_t0))
+                ) / alpha.sqrt();
+
+            s.pos_func_2[1] = 0.0 + self.vy0 * s.state_time +
+                ( (self.a2 / 2.0) * ((u_now * norm_now - u_t0 * norm_t0) + (square_p * (log_now - log_t0))) +
+                    log_coef_y * ((u_now * log_now - u_t0 * log_t0) - (norm_now - norm_t0))
+                ) / alpha.sqrt();
 
             s.state_time += dt;
             self.traj.push(s.clone());
