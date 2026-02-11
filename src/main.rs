@@ -74,9 +74,12 @@ impl OmniApp {
         let gamma = self.a3.powi(2) + self.a4.powi(2);
 
         let square_p = (4.0 * alpha * gamma - beta.powi(2)) / (4.0 * alpha.powi(2));
+        let p = square_p.sqrt();
         let u_t0 = beta / (2.0 * alpha);
         let norm_t0 = (u_t0.powi(2) + square_p).sqrt();
-        let log_t0 = (u_t0 + norm_t0).ln();
+        // let log_t0 = (u_t0 + norm_t0).ln();
+        //log(u + sqrt(u^2 + p^2)) = arcsinh(u/p)
+        let arcsisnh_t0 = (u_t0 / p).asinh();
         let log_coef_x = self.a3 - (beta * self.a1) / (2.0 * alpha);
         let log_coef_y = self.a4 - (beta * self.a2) / (2.0 * alpha);
 
@@ -99,25 +102,28 @@ impl OmniApp {
             //積分関数
             let u_now = u_t0 + s.state_time;
             let norm_now = (u_now.powi(2) + square_p).sqrt();
-            let log_now = (u_now + norm_now).ln();
+            // let log_now = (u_now + norm_now).ln();
+            let arcsisnh_now = (u_now / p).asinh();
 
             s.vel_func_2[0] = self.vx0 +
-                ( self.a1 * (norm_now - norm_t0) + log_coef_x * (log_now - log_t0) ) / alpha.sqrt();
+                ( self.a1 * (norm_now - norm_t0) + log_coef_x * (arcsisnh_now - arcsisnh_t0) ) / alpha.sqrt();
 
             s.vel_func_2[1] = self.vy0 +
-                ( self.a2 * (norm_now - norm_t0) + log_coef_y * (log_now - log_t0) ) / alpha.sqrt();
+                ( self.a2 * (norm_now - norm_t0) + log_coef_y * (arcsisnh_now - arcsisnh_t0) ) / alpha.sqrt();
 
-            //s.pos_func_2[0] += s.vel_func_2[0] * dt;
-            //s.pos_func_2[1] += s.vel_func_2[1] * dt;
+            /*
+            s.pos_func_2[0] += s.vel_func_2[0] * dt;
+            s.pos_func_2[1] += s.vel_func_2[1] * dt;
+            */
 
             s.pos_func_2[0] = 0.0 + self.vx0 * s.state_time +
-                ( (self.a1 / 2.0) * ((u_now * norm_now - u_t0 * norm_t0) + (square_p * (log_now - log_t0))) +
-                    log_coef_x * ((u_now * log_now - u_t0 * log_t0) - (norm_now - norm_t0))
+                ( (self.a1 / 2.0) * ((u_now * norm_now - u_t0 * norm_t0) + (square_p * (arcsisnh_now - arcsisnh_t0))) +
+                    log_coef_x * ((u_now * arcsisnh_now - u_t0 * arcsisnh_t0) - (norm_now - norm_t0))
                 ) / alpha.sqrt();
 
             s.pos_func_2[1] = 0.0 + self.vy0 * s.state_time +
-                ( (self.a2 / 2.0) * ((u_now * norm_now - u_t0 * norm_t0) + (square_p * (log_now - log_t0))) +
-                    log_coef_y * ((u_now * log_now - u_t0 * log_t0) - (norm_now - norm_t0))
+                ( (self.a2 / 2.0) * ((u_now * norm_now - u_t0 * norm_t0) + (square_p * (arcsisnh_now - arcsisnh_t0))) +
+                    log_coef_y * ((u_now * arcsisnh_now - u_t0 * arcsisnh_t0) - (norm_now - norm_t0))
                 ) / alpha.sqrt();
 
             s.state_time += dt;
