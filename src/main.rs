@@ -23,14 +23,18 @@ struct OmniApp {
     scale: f32,
     show_trail: bool,
     playing: bool,
-    // パラメータ
-    a1: f32,
-    a2: f32,
-    a3: f32,
-    a4: f32,
+    // 入力
+    target_pos: [f32; 2],
+    target_vel: [f32; 2],
     vx0: f32,
     vy0: f32,
+    gn_active: bool,
+    gn_max_iter: usize,
+    parametor: Vector4<f32>,
     need_recalc: bool,
+    
+    dragging_v0: bool,
+    drag_start_screen: egui::Pos2,
 }
 
 impl OmniApp {
@@ -38,29 +42,65 @@ impl OmniApp {
         Self {
             traj: Vec::new(),
             time: 0.0,
-            time_max: 10.0,
-            scale: 100.0,
+            time_max: 100.0,
+            scale: 10.0,
             show_trail: true,
             playing: false,
-            a1: 1.1,
-            a2: -0.7,
-            a3: 1.0,
-            a4: -0.5,
             vx0: -1.2,
             vy0: 1.3,
+            target_pos: [0.0, 0.0],
+            target_vel: [0.0, 0.0],
+            parametor: Vector4::new(0.5, -0.5, 0.5, -0.5),
             need_recalc: false,
+            gn_active: false,
+            gn_max_iter: 200,
+            dragging_v0: false,
+            drag_start_screen: egui::Pos2::new(0.0, 0.0),
         }
     }
 
+    fn compute_residual(&self) -> Vector4<f32> {
+        let s = self.traj.last().unwrap();
+
+        Vector4::new(
+            s.pos[0] - self.target_pos[0],
+            s.pos[1] - self.target_pos[1],
+            s.vel[0] - self.target_vel[0],
+            s.vel[1] - self.target_vel[1],
+        )
+    }
+
     fn compute_accel(&self, t: f32) -> (f32, f32, f32, f32, f32) {
-        let phai3 = self.a1 * t + self.a3;
-        let phai4 = self.a2 * t + self.a4;
+        let phai3 = self.parametor[0] * t + self.parametor[2];
+        let phai4 = self.parametor[1] * t + self.parametor[3];
 
         let h1 = (phai3 * phai3 + phai4 * phai4).sqrt().max(1e-6);
         
         let ux = phai3 / h1;
         let uy = phai4 / h1;
         (ux, uy, phai3, phai4, h1)
+    }
+
+    fn gauss_newton_step(&mut self) {
+        println!("run gn step\n");
+        let s = self.traj.last().unwrap();
+        let r = self.compute_residual();
+        let j = s.jacobian;
+
+        let lambda: f32 = 1e-2;
+        let identity = Matrix4::identity();
+
+        let jt = j.transpose();
+        let h = (jt * j) + lambda * identity; // 近似ヘッセ
+        let g = jt * r;              // 勾配
+
+        if let Some(delta) = h.lu().solve(&g) {
+            self.parametor -= delta;
+            println!("|r| = {}", r.norm());
+            println!("|delta| = {}", delta.norm());
+        }
+
+        self.need_recalc = true;
     }
 
     fn precompute(&mut self) {
@@ -155,6 +195,7 @@ impl OmniApp {
                 0.0, ya2, 0.0, ya4);
 
             //とりあえずオイラー法
+            //ヤコビアンが^2以降0なので、状態行列は解析的に解ける
             s.jacobian += (transition_matrix * s.jacobian + input_matrix )*dt;
 
             //積分関数 
@@ -207,6 +248,13 @@ impl OmniApp {
     fn world_to_screen(&self, center: Pos2, p: [f32; 2]) -> Pos2 {
         Pos2::new(center.x + p[0] * self.scale, center.y - p[1] * self.scale)
     }
+    
+    fn screen_to_world(&self, center: egui::Pos2, p: egui::Pos2) -> egui::Vec2 {
+        egui::Vec2 {
+            x: (p.x - center.x) / self.scale,
+            y: -(p.y - center.y) / self.scale,
+        }
+    }
 }
 
 impl App for OmniApp {
@@ -223,18 +271,40 @@ impl App for OmniApp {
 
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().slider_width = 200.0;
-                ui.label("a1"); self.need_recalc |= ui.add(egui::Slider::new(&mut self.a1, -2.0..=2.0).text("a1")).changed();
-                ui.label("a2"); self.need_recalc |= ui.add(egui::Slider::new(&mut self.a2, -2.0..=2.0).text("a2")).changed();
-                ui.label("a3"); self.need_recalc |= ui.add(egui::Slider::new(&mut self.a3, -2.0..=2.0).text("a3")).changed();
-                ui.label("a4"); self.need_recalc |= ui.add(egui::Slider::new(&mut self.a4, -2.0..=2.0).text("a4")).changed();
-            });
-            ui.separator();
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().slider_width = 200.0;
                 ui.label("Initial Velocity");
                 self.need_recalc |= ui.add(egui::Slider::new(&mut self.vx0, -5.0..=5.0).text("vx0")).changed();
                 self.need_recalc |= ui.add(egui::Slider::new(&mut self.vy0, -5.0..=5.0).text("vy0")).changed();
             });
+
+            ui.label("Target");
+
+            ui.add(egui::DragValue::new(&mut self.target_pos[0]).prefix("x: "));
+            ui.add(egui::DragValue::new(&mut self.target_pos[1]).prefix("y: "));
+            ui.add(egui::DragValue::new(&mut self.target_vel[0]).prefix("vx: "));
+            ui.add(egui::DragValue::new(&mut self.target_vel[1]).prefix("vy: "));
+            
+            if ui.button("GN step").clicked() {
+                self.gauss_newton_step();
+            }
+
+            if ui.button("Solve").clicked() {
+                self.gn_active = true;
+            }
+            ui.separator();
+
+            if self.gn_active {
+                for _ in 0..self.gn_max_iter {
+                    self.precompute();
+
+                    let err = self.compute_residual().norm();
+                    if err < 1e-4 {
+                        self.gn_active = false;
+                        break;
+                    }
+                    self.gauss_newton_step();
+                }
+                self.precompute();              // 最終結果反映
+            }
 
             ui.add_space(6.0);
             ui.horizontal(|ui| {
@@ -326,6 +396,7 @@ impl App for OmniApp {
                 */
             }
 
+            /*
             if let Some(current_state) = self
                 .traj
                     .iter()
@@ -339,6 +410,7 @@ impl App for OmniApp {
                 println!("Current time: {:.3}", current_state.state_time);
                 println!("Jacobian:\n{}", current_state.jacobian);
             }
+            */
 
             // 軸
             let axis_len = self.scale * 3.0;
