@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 eframe = "0.33.3"
 egui = "0.33.3"
+nalgebra = "0.34.1"
