@@ -7,8 +7,10 @@ struct State {
     pos: [f32; 2],
     vel: [f32; 2],
     state_time: f32,
+    /*
     pos_func_2: [f32; 2],
     vel_func_2: [f32; 2],
+    */
 }
 
 #[derive(Default)]
@@ -68,7 +70,7 @@ impl OmniApp {
         // accel_y = phi4 / sqrt(phi3^2 + phi4^2)
         
         // 数値積分と、積分関数の結果があっていることを確かめます。
-
+        /*
         let alpha = self.a1.powi(2) + self.a2.powi(2);
         let beta = 2.0 * (self.a1 * self.a3 + self.a2 * self.a4);
         let gamma = self.a3.powi(2) + self.a4.powi(2);
@@ -82,6 +84,7 @@ impl OmniApp {
         let arcsisnh_t0 = (u_t0 / p).asinh();
         let log_coef_x = self.a3 - (beta * self.a1) / (2.0 * alpha);
         let log_coef_y = self.a4 - (beta * self.a2) / (2.0 * alpha);
+        */
 
         self.traj.clear();
         let mut s = State::default();
@@ -94,12 +97,48 @@ impl OmniApp {
             s.accel[1] = uy;
 
             //数値積分
+            //速度、位置は一方向の加算なので、オイラー法でよい
             s.vel[0] += ux * dt;
             s.vel[1] += uy * dt;
             s.pos[0] += s.vel[0] * dt;
             s.pos[1] += s.vel[1] * dt;
 
-            //積分関数
+            // State: S(t) { x, y, vx, vy }
+            // parametor: P { a1, a2, a3, a4 }
+            // Jacobian: J(t,P) = ∂S(t)/∂P (縦行x,y,vx,vy: 横列∂a1,∂a2,∂a3,∂a4)
+            // S(t)はPに依存しているので、
+            // ∂{∂S(t)/∂P}/∂t = ∂{∂S(t)/∂t}/∂P
+            // = ({∂S(t)/∂t}/∂S) * J(t,P) + ({∂S(t)/∂t}/∂P)
+            // 
+            //  {∂S(t)/∂t}/∂S = {vx, vy, ux, uy}/∂S = [ 0, 0, 1, 0,
+            //                                          0, 0, 0, 1,
+            //                                          0, 0, 0, 0,
+            //                                          0, 0, 0, 0, ]
+            // Pはux,uyに影響し、=> vx,vy,=> x,yは状態遷移行列で更新されるため、
+            //  入力項として
+            // {∂S(t)/∂t}/∂P = {vx, vy, ux, uy}/∂P
+            //  = [ 0, 0, 0, 0,
+            //      0, 0, 0, 0,
+            //      ∂ux/∂a1,  ∂ux/∂a2, ∂ux/∂a3, ∂ux/∂a4,
+            //      ∂uy/∂a1,  ∂uy/∂a2, ∂uy/∂a3, ∂uy/∂a4,
+            //      ]
+            //
+            // R = sqrt(phai3^2 + phai4^2)
+            // ∂ux/∂a1 = t/R - (phai3^2 * t)/R^3
+            // ∂ux/∂a2 = 0
+            // ∂ux/∂a3 = 1/R - (phai3^2 * 1)/R^3
+            // ∂ux/∂a4 = 0
+            //
+            // ∂uy/∂a1 = 0
+            // ∂uy/∂a2 = t/R - (phai4^2 * t)/R^3
+            // ∂uy/∂a3 = 0
+            // ∂uy/∂a4 = 1/R - (phai4^2 * 1)/R^3
+
+            //積分関数 
+            //実験結果=> 特に位置の2階積分が、不安定
+            //sqrt(alpha)が分母(1,a3が0に近いとき、加速度は変化しない)
+            // log,arcsinhの実装依存や浮動小数点の精度限界ぽい
+            /*
             let u_now = u_t0 + s.state_time;
             let norm_now = (u_now.powi(2) + square_p).sqrt();
             // let log_now = (u_now + norm_now).ln();
@@ -107,24 +146,21 @@ impl OmniApp {
 
             s.vel_func_2[0] = self.vx0 +
                 ( self.a1 * (norm_now - norm_t0) + log_coef_x * (arcsisnh_now - arcsisnh_t0) ) / alpha.sqrt();
-
             s.vel_func_2[1] = self.vy0 +
                 ( self.a2 * (norm_now - norm_t0) + log_coef_y * (arcsisnh_now - arcsisnh_t0) ) / alpha.sqrt();
-
             /*
             s.pos_func_2[0] += s.vel_func_2[0] * dt;
             s.pos_func_2[1] += s.vel_func_2[1] * dt;
             */
-
             s.pos_func_2[0] = 0.0 + self.vx0 * s.state_time +
                 ( (self.a1 / 2.0) * ((u_now * norm_now - u_t0 * norm_t0) + (square_p * (arcsisnh_now - arcsisnh_t0))) +
                     log_coef_x * ((u_now * arcsisnh_now - u_t0 * arcsisnh_t0) - (norm_now - norm_t0))
                 ) / alpha.sqrt();
-
             s.pos_func_2[1] = 0.0 + self.vy0 * s.state_time +
                 ( (self.a2 / 2.0) * ((u_now * norm_now - u_t0 * norm_t0) + (square_p * (arcsisnh_now - arcsisnh_t0))) +
                     log_coef_y * ((u_now * arcsisnh_now - u_t0 * arcsisnh_t0) - (norm_now - norm_t0))
                 ) / alpha.sqrt();
+            */
 
             s.state_time += dt;
             self.traj.push(s.clone());
@@ -206,7 +242,8 @@ impl App for OmniApp {
             ui.add_space(5.0);
             ui.label(format!(
                 "t = {:.2}s   pos_func_2 = [{:.2}, {:.2}]   vel = [{:.2}, {:.2}]   acc = [{:.2}, {:.2}]",
-                state.state_time, state.pos_func_2[0], state.pos_func_2[1], state.vel_func_2[0], state.vel_func_2[1], ux, uy
+                state.state_time, state.pos[0], state.pos[1], state.vel[0], state.vel[1], ux, uy
+                //state.state_time, state.pos_func_2[0], state.pos_func_2[1], state.vel_func_2[0], state.vel_func_2[1], ux, uy
             ));
         });
 
@@ -225,11 +262,11 @@ impl App for OmniApp {
                         .iter()
                         .min_by(|a, b| (a.state_time - t_mark).abs().partial_cmp(&(b.state_time - t_mark).abs()).unwrap())
                 {
-                    let pos_screen = self.world_to_screen(center, state.pos_func_2);
+                    let pos_screen = self.world_to_screen(center, state.pos);
                     painter.circle_filled(pos_screen, 10.0, egui::Color32::from_rgb(255, 140, 0));
 
                     // 速度ベクトル
-                    let vel_end = Pos2::new(pos_screen.x + state.vel_func_2[0] * self.scale * VEL_ARROW_SCALE, pos_screen.y - state.vel_func_2[1] * self.scale * VEL_ARROW_SCALE);
+                    let vel_end = Pos2::new(pos_screen.x + state.vel[0] * self.scale * VEL_ARROW_SCALE, pos_screen.y - state.vel[1] * self.scale * VEL_ARROW_SCALE);
                     painter.line_segment([pos_screen, vel_end], Stroke::new(2.5, egui::Color32::DARK_GREEN));
 
                     // 加速度ベクトル
@@ -253,6 +290,7 @@ impl App for OmniApp {
                     painter.add(Shape::line(points, Stroke::new(2.0, egui::Color32::LIGHT_BLUE)));
                 }
 
+                /*
                 let points_func_2: Vec<Pos2> = self
                     .traj
                     .iter()
@@ -262,6 +300,7 @@ impl App for OmniApp {
                 if points_func_2.len() > 1 {
                     painter.add(Shape::line(points_func_2, Stroke::new(2.0, egui::Color32::LIGHT_RED)));
                 }
+                */
             }
 
             // 軸
