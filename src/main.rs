@@ -146,8 +146,7 @@ impl OmniApp {
 
 impl App for OmniApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut Frame) {
-        // 🌞 明るいテーマ設定
-        ctx.set_visuals(egui::Visuals::light());
+        //ctx.set_visuals(egui::Visuals::light());
 
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             ui.add_space(8.0);
