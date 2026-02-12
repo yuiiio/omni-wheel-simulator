@@ -78,7 +78,7 @@ impl OmniApp {
     }
 
     fn gauss_newton_step(&mut self) {
-        println!("run gn step\n");
+        //println!("run gn step\n");
         let s = self.traj.last().unwrap();
         let r = self.compute_residual();
         let j = s.jacobian;
@@ -93,14 +93,14 @@ impl OmniApp {
         if let Some(delta) = h.lu().solve(&g) {
             self.parametor -= delta;
             println!("|r| = {}", r.norm());
-            println!("|delta| = {}", delta.norm());
+            //println!("|delta| = {}", delta.norm());
             //println!("parametor: {}", self.parametor);
         } else {
             println!("failed to solve delta, reset parametor");
             self.parametor[0] = 0.0;
             self.parametor[1] = 0.0;
-            self.parametor[2] = self.target_pos[0] * 0.1;
-            self.parametor[3] = self.target_pos[1] * 0.1;
+            self.parametor[2] = self.target_pos[0] * 1.0;
+            self.parametor[3] = self.target_pos[1] * 1.0;
         }
     }
 
@@ -302,8 +302,8 @@ impl App for OmniApp {
             if input_changed {
                 self.parametor[0] = 0.0;
                 self.parametor[1] = 0.0;
-                self.parametor[2] = self.target_pos[0] * 0.1;
-                self.parametor[3] = self.target_pos[1] * 0.1;
+                self.parametor[2] = self.target_pos[0] * 1.0;
+                self.parametor[3] = self.target_pos[1] * 1.0;
             }
 
             for _ in 0..self.gn_max_iter {
