@@ -18,11 +18,9 @@ struct State {
 #[derive(Default)]
 struct OmniApp {
     traj: Vec<State>,
-    time: f32,
     time_max: f32,
     scale: f32,
     show_trail: bool,
-    playing: bool,
     // 入力
     target_pos: [f32; 2],
     target_vel: [f32; 2],
@@ -41,16 +39,14 @@ impl OmniApp {
     fn new() -> Self {
         Self {
             traj: Vec::new(),
-            time: 0.0,
             time_max: 100.0,
             scale: 10.0,
             show_trail: true,
-            playing: false,
             vx0: -1.2,
             vy0: 1.3,
             target_pos: [0.0, 0.0],
             target_vel: [0.0, 0.0],
-            parametor: Vector4::new(0.5, -0.5, 0.5, -0.5),
+            parametor: Vector4::new(0.0, 0.0, 0.0, 0.0),
             need_recalc: false,
             gn_active: false,
             gn_max_iter: 200,
@@ -98,6 +94,10 @@ impl OmniApp {
             self.parametor -= delta;
             println!("|r| = {}", r.norm());
             println!("|delta| = {}", delta.norm());
+            //println!("parametor: {}", self.parametor);
+        } else {
+            println!("failed to solve delta, reset parametor");
+            self.parametor = Vector4::new(0.0, 0.0, 0.0, 0.0);
         }
 
         self.need_recalc = true;
@@ -306,38 +306,14 @@ impl App for OmniApp {
                 self.precompute();              // 最終結果反映
             }
 
-            ui.add_space(6.0);
-            ui.horizontal(|ui| {
-                if ui.add(egui::Button::new(if self.playing { "⏸ Pause" } else { "▶ Play" }).min_size(Vec2::new(80.0, 32.0))).clicked() {
-                    if !self.playing && self.traj.is_empty() {
-                        self.precompute();
-                    }
-                    self.playing = !self.playing;
-                }
-                if ui.add(egui::Button::new("🔁 Recompute").min_size(Vec2::new(100.0, 32.0))).clicked() || self.need_recalc {
-                    self.precompute();
-                    self.need_recalc = false;
-                }
-                ui.checkbox(&mut self.show_trail, "Show trail");
-            });
-
             ui.add_space(10.0);
 
-            // 時間スライダーを大きくする
             ui.style_mut().spacing.slider_width = 500.0;
-            let slider = egui::Slider::new(&mut self.time, 0.0..=self.time_max)
-                .text("⏱ time (s)")
+            let slider = egui::Slider::new(&mut self.time_max, 0.1..=100.0)
+                .text("time_max (T)")
                 .trailing_fill(true);
             ui.add_sized(Vec2::new(520.0, 28.0), slider);
 
-            let (ux, uy, _, _, _) = self.compute_accel(self.time);
-            let state = self.get_state_at(self.time);
-            ui.add_space(5.0);
-            ui.label(format!(
-                "t = {:.2}s   pos_func_2 = [{:.2}, {:.2}]   vel = [{:.2}, {:.2}]   acc = [{:.2}, {:.2}]",
-                state.state_time, state.pos[0], state.pos[1], state.vel[0], state.vel[1], ux, uy
-                //state.state_time, state.pos_func_2[0], state.pos_func_2[1], state.vel_func_2[0], state.vel_func_2[1], ux, uy
-            ));
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -349,7 +325,7 @@ impl App for OmniApp {
 
             // --- 0.5 秒ごとの状態描画（軌道線の上に追加） ---
             let mut t_mark = 0.0;
-            while t_mark <= self.time && t_mark <= self.time_max {
+            while t_mark <= self.time_max {
                 if let Some(state) = self
                     .traj
                         .iter()
@@ -376,7 +352,6 @@ impl App for OmniApp {
                 let points: Vec<Pos2> = self
                     .traj
                     .iter()
-                    .take_while(|s| s.state_time <= self.time)
                     .map(|s| self.world_to_screen(center, s.pos))
                     .collect();
                 if points.len() > 1 {
@@ -427,14 +402,6 @@ impl App for OmniApp {
             let initial_vel = self.world_to_screen(center, [self.vx0 * VEL_ARROW_SCALE, self.vy0 * VEL_ARROW_SCALE]);
             painter.line_segment([Pos2::new(center.x, center.y), initial_vel], Stroke::new(2.5, egui::Color32::DARK_BLUE));
         });
-
-        if self.playing {
-            self.time += 1.0 / 60.0;
-            if self.time > self.time_max {
-                self.time = 0.0;
-                self.playing = false;
-            }
-        }
 
         ctx.request_repaint();
     }
