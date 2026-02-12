@@ -2,6 +2,8 @@ use eframe::{egui, App, Frame};
 use egui::{Pos2, Shape, Stroke, Vec2};
 use nalgebra::{Matrix4, Vector4};
 
+const ACCEL_NORM: f32 = 1.0;
+
 #[derive(Default, Clone)]
 struct State {
     accel: [f32; 2],
@@ -29,7 +31,6 @@ struct OmniApp {
     gn_active: bool,
     gn_max_iter: usize,
     parametor: Vector4<f32>,
-    need_recalc: bool,
     
     dragging_v0: bool,
     drag_start_screen: egui::Pos2,
@@ -47,7 +48,6 @@ impl OmniApp {
             target_pos: [0.0, 0.0],
             target_vel: [0.0, 0.0],
             parametor: Vector4::new(0.0, 0.0, 0.0, 0.0),
-            need_recalc: false,
             gn_active: false,
             gn_max_iter: 200,
             dragging_v0: false,
@@ -72,8 +72,8 @@ impl OmniApp {
 
         let h1 = (phai3 * phai3 + phai4 * phai4).sqrt().max(1e-6);
         
-        let ux = phai3 / h1;
-        let uy = phai4 / h1;
+        let ux = (phai3 / h1 ) * ACCEL_NORM;
+        let uy = (phai4 / h1 ) * ACCEL_NORM;
         (ux, uy, phai3, phai4, h1)
     }
 
@@ -99,8 +99,6 @@ impl OmniApp {
             println!("failed to solve delta, reset parametor");
             self.parametor = Vector4::new(0.0, 0.0, 0.0, 0.0);
         }
-
-        self.need_recalc = true;
     }
 
     fn precompute(&mut self) {
@@ -272,48 +270,41 @@ impl App for OmniApp {
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().slider_width = 200.0;
                 ui.label("Initial Velocity");
-                self.need_recalc |= ui.add(egui::Slider::new(&mut self.vx0, -5.0..=5.0).text("vx0")).changed();
-                self.need_recalc |= ui.add(egui::Slider::new(&mut self.vy0, -5.0..=5.0).text("vy0")).changed();
+                ui.add(egui::Slider::new(&mut self.vx0, -10.0..=10.0).text("vx0"));
+                ui.add(egui::Slider::new(&mut self.vy0, -10.0..=10.0).text("vy0"));
             });
 
             ui.label("Target");
-
-            ui.add(egui::DragValue::new(&mut self.target_pos[0]).prefix("x: "));
-            ui.add(egui::DragValue::new(&mut self.target_pos[1]).prefix("y: "));
-            ui.add(egui::DragValue::new(&mut self.target_vel[0]).prefix("vx: "));
-            ui.add(egui::DragValue::new(&mut self.target_vel[1]).prefix("vy: "));
-            
-            if ui.button("GN step").clicked() {
-                self.gauss_newton_step();
-            }
-
-            if ui.button("Solve").clicked() {
-                self.gn_active = true;
-            }
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().slider_width = 200.0;
+                ui.add(egui::Slider::new(&mut self.target_pos[0], -50.0..=50.0).text("x"));
+                ui.add(egui::Slider::new(&mut self.target_pos[1], -50.0..=50.0).text("y"));
+            });
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().slider_width = 200.0;
+                ui.add(egui::Slider::new(&mut self.target_vel[0], -50.0..=50.0).text("vx"));
+                ui.add(egui::Slider::new(&mut self.target_vel[1], -50.0..=50.0).text("vy"));
+            });
             ui.separator();
-
-            if self.gn_active {
-                for _ in 0..self.gn_max_iter {
-                    self.precompute();
-
-                    let err = self.compute_residual().norm();
-                    if err < 1e-4 {
-                        self.gn_active = false;
-                        break;
-                    }
-                    self.gauss_newton_step();
-                }
-                self.precompute();              // 最終結果反映
-            }
-
-            ui.add_space(10.0);
 
             ui.style_mut().spacing.slider_width = 500.0;
             let slider = egui::Slider::new(&mut self.time_max, 0.1..=100.0)
                 .text("time_max (T)")
                 .trailing_fill(true);
             ui.add_sized(Vec2::new(520.0, 28.0), slider);
+            ui.add_space(10.0);
 
+            for _ in 0..self.gn_max_iter {
+                self.precompute();
+
+                let err = self.compute_residual().norm();
+                if err < 1e-4 {
+                    self.gn_active = false;
+                    break;
+                }
+                self.gauss_newton_step();
+            }
+            self.precompute();              // 最終結果反映
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
