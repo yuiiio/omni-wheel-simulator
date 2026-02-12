@@ -97,7 +97,10 @@ impl OmniApp {
             //println!("parametor: {}", self.parametor);
         } else {
             println!("failed to solve delta, reset parametor");
-            self.parametor = Vector4::new(0.0, 0.0, 0.0, 0.0);
+            self.parametor[0] = 0.0;
+            self.parametor[1] = 0.0;
+            self.parametor[2] = self.target_pos[0] * 0.1;
+            self.parametor[3] = self.target_pos[1] * 0.1;
         }
     }
 
@@ -267,23 +270,25 @@ impl App for OmniApp {
             ui.add_space(8.0);
             ui.separator();
 
+            let mut input_changed = false;
+
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().slider_width = 200.0;
                 ui.label("Initial Velocity");
-                ui.add(egui::Slider::new(&mut self.vx0, -10.0..=10.0).text("vx0"));
-                ui.add(egui::Slider::new(&mut self.vy0, -10.0..=10.0).text("vy0"));
+                input_changed |= ui.add(egui::Slider::new(&mut self.vx0, -10.0..=10.0).text("vx0")).changed();
+                input_changed |= ui.add(egui::Slider::new(&mut self.vy0, -10.0..=10.0).text("vy0")).changed();
             });
 
             ui.label("Target");
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().slider_width = 200.0;
-                ui.add(egui::Slider::new(&mut self.target_pos[0], -50.0..=50.0).text("x"));
-                ui.add(egui::Slider::new(&mut self.target_pos[1], -50.0..=50.0).text("y"));
+                input_changed |= ui.add(egui::Slider::new(&mut self.target_pos[0], -50.0..=50.0).text("x")).changed();
+                input_changed |= ui.add(egui::Slider::new(&mut self.target_pos[1], -50.0..=50.0).text("y")).changed();
             });
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().slider_width = 200.0;
-                ui.add(egui::Slider::new(&mut self.target_vel[0], -50.0..=50.0).text("vx"));
-                ui.add(egui::Slider::new(&mut self.target_vel[1], -50.0..=50.0).text("vy"));
+                input_changed |= ui.add(egui::Slider::new(&mut self.target_vel[0], -50.0..=50.0).text("vx")).changed();
+                input_changed |= ui.add(egui::Slider::new(&mut self.target_vel[1], -50.0..=50.0).text("vy")).changed();
             });
             ui.separator();
 
@@ -293,6 +298,13 @@ impl App for OmniApp {
                 .trailing_fill(true);
             ui.add_sized(Vec2::new(520.0, 28.0), slider);
             ui.add_space(10.0);
+
+            if input_changed {
+                self.parametor[0] = 0.0;
+                self.parametor[1] = 0.0;
+                self.parametor[2] = self.target_pos[0] * 0.1;
+                self.parametor[3] = self.target_pos[1] * 0.1;
+            }
 
             for _ in 0..self.gn_max_iter {
                 self.precompute();
