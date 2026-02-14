@@ -96,11 +96,7 @@ impl OmniApp {
             //println!("|delta| = {}", delta.norm());
             //println!("parametor: {}", self.parametor);
         } else {
-            println!("failed to solve delta, reset parametor");
-            self.parametor[0] = 0.0;
-            self.parametor[1] = 0.0;
-            self.parametor[2] = self.target_pos[0] * 1.0;
-            self.parametor[3] = self.target_pos[1] * 1.0;
+            println!("failed to solve delta, don't update parametor");
         }
     }
 
