@@ -300,6 +300,21 @@ impl App for OmniApp {
                 self.parametor[1] = 0.0;
                 self.parametor[2] = self.target_pos[0] * 1.0;
                 self.parametor[3] = self.target_pos[1] * 1.0;
+
+                // Estimate Upper_T for initial guess
+                let v0_time = (self.vx0.powi(2) + self.vy0.powi(2)).sqrt();
+                let v0_x_1: f32 = self.vx0 * v0_time / 2.0;
+                let v0_y_1: f32 = self.vy0 * v0_time / 2.0;
+
+                let target_velocity_time = (self.target_vel[0].powi(2) + self.target_vel[1].powi(2)).sqrt();
+                let v0_x_2: f32 = self.target_vel[0] * target_velocity_time / 2.0;
+                let v0_y_2: f32 = self.target_vel[1] * target_velocity_time / 2.0;
+
+                let middle_d = (
+                    (self.target_pos[0] - v0_x_1 - v0_x_2).powi(2)
+                    + (self.target_pos[1] - v0_y_1 - v0_y_2).powi(2) ).sqrt();
+
+                self.time_max = v0_time + (middle_d.sqrt() * 2.0) + target_velocity_time;
             }
 
             for _ in 0..self.gn_max_iter {
